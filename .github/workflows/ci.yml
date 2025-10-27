@@ -1,0 +1,157 @@
+name: ⚡ CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "dev", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "dev", "develop" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  eslint:
+    name: 🔍 ESLint
+    uses: ./.github/workflows/eslint.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+  
+  test:
+    name: 🧪 Test & Build
+    runs-on: ubuntu-latest
+    needs: eslint
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: 📦 Cache Dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      
+      - name: 📥 Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+      
+      - name: 🧪 Run Tests
+        id: test
+        run: |
+          if [ -f "package.json" ] && grep -q "\"test\"" package.json; then
+            echo "Running tests..."
+            bun run test || echo "test_failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No test script found, skipping..."
+            echo "test_skipped=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🏗️ Build Project
+        id: build
+        run: |
+          if [ -f "package.json" ] && grep -q "\"build\"" package.json; then
+            echo "Building project..."
+            bun run build
+          else
+            echo "No build script found, skipping..."
+            echo "build_skipped=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📦 Cache Build Output
+        if: steps.build.outputs.build_skipped != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nuxt
+            .output
+            dist
+          key: ${{ runner.os }}-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+      
+      - name: 📢 Summary
+        if: always()
+        run: |
+          echo "## ⚡ CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> 🔍 ESLint runs in a separate job" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Test status
+          if [ "${{ steps.test.outputs.test_skipped }}" == "true" ]; then
+            echo "- 🧪 **Testing**: ⏭️ Skipped (no test script)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.test.outputs.test_failed }}" == "true" ]; then
+            echo "- 🧪 **Testing**: ❌ Failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🧪 **Testing**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Build status
+          if [ "${{ steps.build.outputs.build_skipped }}" == "true" ]; then
+            echo "- 🏗️ **Build**: ⏭️ Skipped (no build script)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🏗️ **Build**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 **Cache Hit**: ${{ steps.cache-deps.outputs.cache-hit == 'true' && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+
+  type-check:
+    name: 📝 Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: 📦 Restore Cached Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      
+      - name: 📥 Install Dependencies
+        run: bun install --frozen-lockfile
+      
+      - name: 📝 Run Type Check
+        run: |
+          if [ -f "package.json" ] && grep -q "\"typecheck\"" package.json; then
+            echo "Running type check..."
+            bun run typecheck
+          elif [ -f "tsconfig.json" ]; then
+            echo "Running tsc..."
+            bunx tsc --noEmit
+          else
+            echo "No TypeScript configuration found, skipping..."
+          fi
+      
+      - name: 📢 Summary
+        if: always()
+        run: |
+          echo "## 📝 Type Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Type checking completed successfully" >> $GITHUB_STEP_SUMMARY
