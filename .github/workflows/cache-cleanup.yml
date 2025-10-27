@@ -1,0 +1,76 @@
+name: 🧹 Cache Cleanup
+
+on:
+  schedule:
+    # Run every Sunday at 1 AM UTC
+    - cron: '0 1 * * 0'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: 🗑️ Clean Old Caches
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🧹 Cleanup Old Caches
+        id: cleanup
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const caches = await github.rest.actions.getActionsCacheList({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            
+            console.log(`📊 Found ${caches.data.total_count} caches`);
+            
+            // Delete caches older than 7 days
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            let deletedCount = 0;
+            let freedSpace = 0;
+            
+            for (const cache of caches.data.actions_caches) {
+              const cacheDate = new Date(cache.created_at);
+              
+              if (cacheDate < sevenDaysAgo) {
+                try {
+                  await github.rest.actions.deleteActionsCacheById({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    cache_id: cache.id
+                  });
+                  
+                  deletedCount++;
+                  freedSpace += cache.size_in_bytes;
+                  console.log(`🗑️ Deleted cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB)`);
+                } catch (error) {
+                  console.log(`⚠️ Failed to delete cache ${cache.key}: ${error.message}`);
+                }
+              }
+            }
+            
+            const freedSpaceMB = (freedSpace / 1024 / 1024).toFixed(2);
+            console.log(`✅ Cleanup complete: Deleted ${deletedCount} caches, freed ${freedSpaceMB} MB`);
+            
+            // Set outputs for summary
+            core.setOutput('deleted_count', deletedCount);
+            core.setOutput('freed_space_mb', freedSpaceMB);
+      
+      - name: 📢 Summary
+        if: always()
+        run: |
+          echo "## 🧹 Cache Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ **Caches Deleted**: ${{ steps.cleanup.outputs.deleted_count || 0 }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 💾 **Space Freed**: ${{ steps.cleanup.outputs.freed_space_mb || 0 }} MB" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 **Cutoff Date**: 7 days ago" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Old caches have been removed to optimize storage." >> $GITHUB_STEP_SUMMARY
