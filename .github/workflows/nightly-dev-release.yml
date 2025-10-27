@@ -21,11 +21,48 @@ jobs:
       pull-requests: write
       checks: write
   
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v5
+      
+      - name: 🔧 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: 📦 Cache Dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      
+      - name: 📥 Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+      
+      - name: 🧪 Run Tests
+        run: |
+          if [ -f "package.json" ] && grep -q "\"test\"" package.json; then
+            echo "Running tests..."
+            bun run test
+          else
+            echo "No test script found, skipping..."
+          fi
+  
   check-and-release:
     name: 🚀 Check Changes & Create Release
     runs-on: ubuntu-latest
-    needs: eslint
-    if: always() # Run even if ESLint fails, but include status in release notes
+    needs: [eslint, test]
+    if: needs.test.result == 'success' # Run only if tests were successful
     
     steps:
       - name: 📥 Checkout Repository
@@ -161,6 +198,16 @@ jobs:
             
             // Generate changelog
             let changelog = '## 🌟 What\'s New in This Dev Build\n\n';
+
+            // Add eslint status
+            const eslintStatus = '${{ needs.eslint.outputs.lint-status }}';
+            changelog += '### 🔍 Code Quality\n\n';
+            if (eslintStatus === 'success') {
+              changelog += '✅ ESLint passed\n';
+            } else {
+              changelog += '❌ ESLint failed\n';
+            }
+            changelog += '\n';
             
             // Add commits section
             if (commits.length > 0) {
@@ -288,7 +335,7 @@ jobs:
           if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
             echo "✅ **Release Created Successfully!**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- 🏷️ **Tag**: \`${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏷️ **Tag**: `${{ steps.tag.outputs.tag }}`" >> $GITHUB_STEP_SUMMARY
             echo "- 📝 **Commits**: ${{ steps.changes.outputs.commit_count }}" >> $GITHUB_STEP_SUMMARY
             echo "- 🔀 **Pull Requests**: ${{ steps.changes.outputs.pr_count }}" >> $GITHUB_STEP_SUMMARY
             echo "- 🐛 **Issues**: ${{ steps.changes.outputs.issue_count }}" >> $GITHUB_STEP_SUMMARY

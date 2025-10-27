@@ -1,28 +1,6 @@
 name: 🔍 ESLint
 
 on:
-  push:
-    branches: [ "main", "master", "dev", "develop" ]
-    paths:
-      - '**.js'
-      - '**.ts'
-      - '**.vue'
-      - '**.jsx'
-      - '**.tsx'
-      - '.eslintrc*'
-      - 'eslint.config.*'
-      - 'package.json'
-  pull_request:
-    branches: [ "main", "master", "dev", "develop" ]
-    paths:
-      - '**.js'
-      - '**.ts'
-      - '**.vue'
-      - '**.jsx'
-      - '**.tsx'
-      - '.eslintrc*'
-      - 'eslint.config.*'
-      - 'package.json'
   workflow_call: # Allow this workflow to be called by other workflows
     outputs:
       lint-status:
@@ -45,8 +23,6 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       
       - name: 🔧 Setup Bun
         uses: oven-sh/setup-bun@v2

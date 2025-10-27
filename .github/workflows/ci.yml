@@ -21,8 +21,8 @@ jobs:
       pull-requests: write
       checks: write
   
-  test:
-    name: 🧪 Test & Build
+  test-and-type-check:
+    name: 🧪 Test, Build & Type-Check
     runs-on: ubuntu-latest
     needs: eslint
     
@@ -71,6 +71,23 @@ jobs:
             echo "No build script found, skipping..."
             echo "build_skipped=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: 🔧 Prepare Nuxt
+        run: bun run postinstall
+      
+      - name: 📝 Run Type Check
+        id: typecheck
+        run: |
+          if [ -f "package.json" ] && grep -q "\"typecheck\"" package.json; then
+            echo "Running type check..."
+            bun run typecheck || echo "typecheck_failed=true" >> $GITHUB_OUTPUT
+          elif [ -f "tsconfig.json" ]; then
+            echo "Running tsc..."
+            bunx tsc --noEmit || echo "typecheck_failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No TypeScript configuration found, skipping..."
+            echo "typecheck_skipped=true" >> $GITHUB_OUTPUT
+          fi
       
       - name: 📦 Cache Build Output
         if: steps.build.outputs.build_skipped != 'true'
@@ -107,54 +124,24 @@ jobs:
           else
             echo "- 🏗️ **Build**: ✅ Completed" >> $GITHUB_STEP_SUMMARY
           fi
+
+          # Typecheck status
+          if [ "${{ steps.typecheck.outputs.typecheck_skipped }}" == "true" ]; then
+            echo "- 📝 **Type Check**: ⏭️ Skipped (no typecheck script)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.typecheck.outputs.typecheck_failed }}" == "true" ]; then
+            echo "- 📝 **Type Check**: ❌ Failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 📝 **Type Check**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- 📦 **Cache Hit**: ${{ steps.cache-deps.outputs.cache-hit == 'true' && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
 
-  type-check:
-    name: 📝 Type Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v5
-      
-      - name: 🔧 Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      
-      - name: 📦 Restore Cached Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-      
-      - name: 📥 Install Dependencies
-        run: bun install --frozen-lockfile
-      
-      - name: 🔧 Prepare Nuxt
-        run: bun run postinstall
-      
-      - name: 📝 Run Type Check
-        run: |
-          if [ -f "package.json" ] && grep -q "\"typecheck\"" package.json; then
-            echo "Running type check..."
-            bun run typecheck
-          elif [ -f "tsconfig.json" ]; then
-            echo "Running tsc..."
-            bunx tsc --noEmit
-          else
-            echo "No TypeScript configuration found, skipping..."
-          fi
-      
-      - name: 📢 Summary
-        if: always()
-        run: |
-          echo "## 📝 Type Check Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Type checking completed successfully" >> $GITHUB_STEP_SUMMARY
+  codeql:
+    name: 🔒 CodeQL
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      pull-requests: read

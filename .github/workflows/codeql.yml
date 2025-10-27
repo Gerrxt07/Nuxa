@@ -1,10 +1,7 @@
 name: 🔒 CodeQL Security Analysis
 
 on:
-  push:
-    branches: [ "main", "master", "dev", "develop" ]
-  pull_request:
-    branches: [ "main", "master", "dev", "develop" ]
+  workflow_call:
   schedule:
     # Run every Monday at 4 AM UTC
     - cron: '0 4 * * 1'
@@ -31,8 +28,6 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       
       - name: 🔧 Setup Bun
         uses: oven-sh/setup-bun@v2
