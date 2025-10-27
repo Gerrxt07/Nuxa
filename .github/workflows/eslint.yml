@@ -1,0 +1,210 @@
+name: 🔍 ESLint
+
+on:
+  push:
+    branches: [ "main", "master", "dev", "develop" ]
+    paths:
+      - '**.js'
+      - '**.ts'
+      - '**.vue'
+      - '**.jsx'
+      - '**.tsx'
+      - '.eslintrc*'
+      - 'eslint.config.*'
+      - 'package.json'
+  pull_request:
+    branches: [ "main", "master", "dev", "develop" ]
+    paths:
+      - '**.js'
+      - '**.ts'
+      - '**.vue'
+      - '**.jsx'
+      - '**.tsx'
+      - '.eslintrc*'
+      - 'eslint.config.*'
+      - 'package.json'
+  workflow_call: # Allow this workflow to be called by other workflows
+    outputs:
+      lint-status:
+        description: "Lint status (success/failure)"
+        value: ${{ jobs.lint.outputs.status }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  lint:
+    name: 🔍 Run ESLint
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.lint.outcome }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔧 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: 📦 Cache Dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      
+      - name: 📥 Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+      
+      - name: 🔍 Run ESLint
+        id: lint
+        continue-on-error: true
+        run: |
+          if [ -f "package.json" ] && grep -q "\"lint\"" package.json; then
+            echo "Running ESLint..."
+            bun run lint --format=json --output-file=eslint-report.json || true
+            bun run lint
+          else
+            echo "⚠️ No lint script found in package.json"
+            echo "Checking for ESLint installation..."
+            if command -v bunx &> /dev/null; then
+              bunx eslint . --ext .js,.ts,.vue,.jsx,.tsx --format=json --output-file=eslint-report.json || true
+              bunx eslint . --ext .js,.ts,.vue,.jsx,.tsx
+            else
+              echo "❌ ESLint not available"
+              exit 1
+            fi
+          fi
+      
+      - name: 📊 Parse ESLint Results
+        if: always()
+        id: results
+        run: |
+          if [ -f "eslint-report.json" ]; then
+            # Count errors and warnings
+            ERRORS=$(cat eslint-report.json | grep -o '"errorCount":[0-9]*' | cut -d':' -f2 | awk '{s+=$1} END {print s}')
+            WARNINGS=$(cat eslint-report.json | grep -o '"warningCount":[0-9]*' | cut -d':' -f2 | awk '{s+=$1} END {print s}')
+            
+            echo "errors=${ERRORS:-0}" >> $GITHUB_OUTPUT
+            echo "warnings=${WARNINGS:-0}" >> $GITHUB_OUTPUT
+            
+            echo "📊 ESLint Results:"
+            echo "  ❌ Errors: ${ERRORS:-0}"
+            echo "  ⚠️  Warnings: ${WARNINGS:-0}"
+          else
+            echo "errors=0" >> $GITHUB_OUTPUT
+            echo "warnings=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📤 Upload ESLint Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
+          retention-days: 30
+          if-no-files-found: ignore
+      
+      - name: 💬 Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const errors = '${{ steps.results.outputs.errors }}';
+            const warnings = '${{ steps.results.outputs.warnings }}';
+            const status = '${{ steps.lint.outcome }}';
+            
+            let emoji = '✅';
+            let statusText = 'Passed';
+            
+            if (status === 'failure' || errors > 0) {
+              emoji = '❌';
+              statusText = 'Failed';
+            } else if (warnings > 0) {
+              emoji = '⚠️';
+              statusText = 'Passed with warnings';
+            }
+            
+            const body = `## ${emoji} ESLint Report
+            
+            **Status**: ${statusText}
+            
+            | Metric | Count |
+            |--------|-------|
+            | ❌ Errors | ${errors} |
+            | ⚠️ Warnings | ${warnings} |
+            
+            ${errors > 0 ? '> ⚠️ Please fix the errors before merging.' : ''}
+            ${warnings > 0 && errors == 0 ? '> 💡 Consider fixing the warnings for better code quality.' : ''}
+            ${errors == 0 && warnings == 0 ? '> 🎉 Great job! No linting issues found.' : ''}
+            
+            ---
+            *🔍 [View full workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})*
+            `;
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('ESLint Report')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+      
+      - name: 📢 Summary
+        if: always()
+        run: |
+          echo "## 🔍 ESLint Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.lint.outcome }}" == "success" ]; then
+            echo "✅ **Status**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Status**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ❌ Errors | ${{ steps.results.outputs.errors }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚠️ Warnings | ${{ steps.results.outputs.warnings }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Cache Hit | ${{ steps.cache-deps.outputs.cache-hit == 'true' && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
+      
+      - name: ❌ Fail if Errors Found
+        if: steps.results.outputs.errors != '0'
+        run: |
+          echo "❌ ESLint found ${{ steps.results.outputs.errors }} error(s)"
+          exit 1
