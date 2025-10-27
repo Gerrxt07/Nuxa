@@ -1,0 +1,302 @@
+name: 🌙 Nightly Dev Release
+
+on:
+  schedule:
+    # Runs every night at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  eslint:
+    name: 🔍 Code Quality Check
+    uses: ./.github/workflows/eslint.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+  
+  check-and-release:
+    name: 🚀 Check Changes & Create Release
+    runs-on: ubuntu-latest
+    needs: eslint
+    if: always() # Run even if ESLint fails, but include status in release notes
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for changelog generation
+      
+      - name: 🔧 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: 📦 Cache Dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+            .nuxt
+            .output
+          key: ${{ runner.os }}-nuxa-${{ hashFiles('**/bun.lockb', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuxa-
+      
+      - name: 📥 Install Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+          
+      - name: 🔍 Get Latest Dev Release
+        id: latest_release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const releases = await github.rest.repos.listReleases({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              });
+              
+              const devReleases = releases.data.filter(r => r.tag_name.startsWith('dev-'));
+              
+              if (devReleases.length > 0) {
+                const latest = devReleases[0];
+                core.setOutput('tag', latest.tag_name);
+                core.setOutput('date', latest.created_at);
+                core.setOutput('exists', 'true');
+                console.log(`📌 Found latest dev release: ${latest.tag_name}`);
+              } else {
+                core.setOutput('exists', 'false');
+                core.setOutput('date', '');
+                console.log('📌 No previous dev releases found');
+              }
+            } catch (error) {
+              core.setOutput('exists', 'false');
+              core.setOutput('date', '');
+              console.log('📌 No releases found or error occurred');
+            }
+            
+      - name: 📊 Collect Changes Since Last Release
+        id: changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const lastReleaseDate = '${{ steps.latest_release.outputs.date }}';
+            const sinceDate = lastReleaseDate || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            
+            console.log(`🔎 Checking changes since: ${sinceDate}`);
+            
+            // Get commits
+            let commits = [];
+            try {
+              const commitsResponse = await github.rest.repos.listCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                since: sinceDate,
+                per_page: 100
+              });
+              commits = commitsResponse.data;
+              console.log(`✅ Found ${commits.length} commits`);
+            } catch (error) {
+              console.log('⚠️ Error fetching commits:', error.message);
+            }
+            
+            // Get issues
+            let issues = [];
+            try {
+              const issuesResponse = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'all',
+                since: sinceDate,
+                per_page: 100
+              });
+              issues = issuesResponse.data.filter(i => !i.pull_request);
+              console.log(`✅ Found ${issues.length} issues`);
+            } catch (error) {
+              console.log('⚠️ Error fetching issues:', error.message);
+            }
+            
+            // Get pull requests
+            let pullRequests = [];
+            try {
+              const prsResponse = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'all',
+                sort: 'created',
+                direction: 'desc',
+                per_page: 100
+              });
+              pullRequests = prsResponse.data.filter(pr => 
+                new Date(pr.created_at) >= new Date(sinceDate)
+              );
+              console.log(`✅ Found ${pullRequests.length} pull requests`);
+            } catch (error) {
+              console.log('⚠️ Error fetching PRs:', error.message);
+            }
+            
+            // Check if there are any changes
+            const hasChanges = commits.length > 0 || issues.length > 0 || pullRequests.length > 0;
+            
+            core.setOutput('has_changes', hasChanges.toString());
+            core.setOutput('commit_count', commits.length.toString());
+            core.setOutput('issue_count', issues.length.toString());
+            core.setOutput('pr_count', pullRequests.length.toString());
+            
+            if (!hasChanges) {
+              console.log('⏭️ No changes detected. Skipping release.');
+              return;
+            }
+            
+            // Generate changelog
+            let changelog = '## 🌟 What\'s New in This Dev Build\n\n';
+            
+            // Add commits section
+            if (commits.length > 0) {
+              changelog += '### 📝 Commits\n\n';
+              commits.slice(0, 50).forEach(commit => {
+                const message = commit.commit.message.split('\n')[0];
+                const sha = commit.sha.substring(0, 7);
+                const author = commit.commit.author.name;
+                changelog += `- \`${sha}\` ${message} - *@${author}*\n`;
+              });
+              if (commits.length > 50) {
+                changelog += `\n*...and ${commits.length - 50} more commits*\n`;
+              }
+              changelog += '\n';
+            }
+            
+            // Add pull requests section
+            if (pullRequests.length > 0) {
+              changelog += '### 🔀 Pull Requests\n\n';
+              pullRequests.forEach(pr => {
+                const status = pr.state === 'open' ? '🟢' : pr.merged_at ? '🟣' : '🔴';
+                const statusText = pr.state === 'open' ? 'Open' : pr.merged_at ? 'Merged' : 'Closed';
+                changelog += `- ${status} [#${pr.number}](${pr.html_url}) ${pr.title} - *${statusText}*\n`;
+              });
+              changelog += '\n';
+            }
+            
+            // Add issues section
+            if (issues.length > 0) {
+              changelog += '### 🐛 Issues\n\n';
+              issues.forEach(issue => {
+                const status = issue.state === 'open' ? '🟢' : '🔴';
+                const statusText = issue.state === 'open' ? 'Open' : 'Closed';
+                changelog += `- ${status} [#${issue.number}](${issue.html_url}) ${issue.title} - *${statusText}*\n`;
+              });
+              changelog += '\n';
+            }
+            
+            // Add footer
+            changelog += '---\n\n';
+            changelog += '> 🌙 **This is an automated nightly development release**\n';
+            changelog += '> \n';
+            changelog += '> ⚠️ This build may contain experimental features and is not recommended for production use.\n';
+            changelog += '> \n';
+            changelog += `> 📅 Generated on ${new Date().toUTCString()}\n`;
+            
+            // Save changelog to output
+            const fs = require('fs');
+            fs.writeFileSync('CHANGELOG.md', changelog);
+            console.log('✅ Changelog generated successfully');
+            
+      - name: 🏷️ Generate Release Tag
+        if: steps.changes.outputs.has_changes == 'true'
+        id: tag
+        run: |
+          DATE=$(date +'%Y%m%d')
+          TAG="dev-${DATE}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+          echo "📌 Release tag: ${TAG}"
+          
+      - name: 📦 Create Archive
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          echo "📦 Creating source archive..."
+          git archive --format=zip --output=nuxa-dev-${{ steps.tag.outputs.date }}.zip HEAD
+          echo "✅ Archive created successfully"
+          
+      - name: 🎉 Create GitHub Release
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+            
+            const tag = '${{ steps.tag.outputs.tag }}';
+            const commitCount = '${{ steps.changes.outputs.commit_count }}';
+            const issueCount = '${{ steps.changes.outputs.issue_count }}';
+            const prCount = '${{ steps.changes.outputs.pr_count }}';
+            
+            const releaseTitle = `🌙 Nightly Dev Build - ${tag}`;
+            const releaseBody = `# ${releaseTitle}\n\n` +
+              `📊 **Summary**: ${commitCount} commits, ${prCount} PRs, ${issueCount} issues\n\n` +
+              changelog;
+            
+            try {
+              // Create release
+              const release = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: releaseTitle,
+                body: releaseBody,
+                draft: false,
+                prerelease: true
+              });
+              
+              console.log(`✅ Release created: ${release.data.html_url}`);
+              
+              // Upload archive
+              const archivePath = `nuxa-dev-${{ steps.tag.outputs.date }}.zip`;
+              const archiveData = fs.readFileSync(archivePath);
+              
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id,
+                name: archivePath,
+                data: archiveData
+              });
+              
+              console.log('✅ Archive uploaded successfully');
+              
+            } catch (error) {
+              core.setFailed(`❌ Failed to create release: ${error.message}`);
+            }
+            
+      - name: 📢 Summary
+        if: always()
+        run: |
+          echo "## 🌙 Nightly Dev Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.changes.outputs.has_changes }}" == "true" ]; then
+            echo "✅ **Release Created Successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- 🏷️ **Tag**: \`${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- 📝 **Commits**: ${{ steps.changes.outputs.commit_count }}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔀 **Pull Requests**: ${{ steps.changes.outputs.pr_count }}" >> $GITHUB_STEP_SUMMARY
+            echo "- 🐛 **Issues**: ${{ steps.changes.outputs.issue_count }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **No Changes Detected**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No new commits, issues, or pull requests since the last release." >> $GITHUB_STEP_SUMMARY
+            echo "Skipping release creation." >> $GITHUB_STEP_SUMMARY
+          fi
