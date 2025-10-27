@@ -1,0 +1,156 @@
+version: 2
+
+updates:
+  # 📦 NPM Dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "${{ github.repository_owner }}"
+    assignees:
+      - "${{ github.repository_owner }}"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "automated"
+    groups:
+      # Group Nuxt core updates
+      nuxt-core:
+        patterns:
+          - "nuxt"
+          - "@nuxt/*"
+          - "vue"
+          - "vite"
+          - "nitro*"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group UI/styling dependencies
+      ui-dependencies:
+        patterns:
+          - "@nuxtjs/tailwindcss"
+          - "shadcn-nuxt"
+          - "@nuxt/ui"
+          - "reka-ui"
+          - "@nuxt/icon"
+          - "@nuxt/fonts"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group authentication & security
+      auth-security:
+        patterns:
+          - "@clerk/nuxt"
+          - "nuxt-security"
+          - "@nuxtjs/turnstile"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group database & state management
+      data-management:
+        patterns:
+          - "@prisma/*"
+          - "@pinia/*"
+          - "pinia-*"
+          - "@nuxtjs/supabase"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group content & SEO
+      content-seo:
+        patterns:
+          - "@nuxt/content"
+          - "@nuxtjs/sitemap"
+          - "@nuxtjs/robots"
+          - "@nuxtjs/seo"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group integrations
+      integrations:
+        patterns:
+          - "nuxt-posthog"
+          - "@unlok-co/nuxt-stripe"
+          - "@nuxtjs/apollo"
+          - "@scalar/nuxt"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group animation & utilities
+      utilities:
+        patterns:
+          - "gsap"
+          - "v-gsap-nuxt"
+          - "@nuxtjs/i18n"
+          - "@nuxt/image"
+          - "@nuxtjs/color-mode"
+        update-types:
+          - "minor"
+          - "patch"
+      
+      # Group dev dependencies
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    
+    # Ignore major version updates for stable dependencies
+    ignore:
+      - dependency-name: "vue"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "nuxt"
+        update-types: ["version-update:semver-major"]
+
+  # 🐳 Docker (if you add Docker later)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+
+  # 🔧 GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
