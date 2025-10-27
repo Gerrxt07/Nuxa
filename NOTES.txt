@@ -1,0 +1,33 @@
+Stack:
+    - SSR
+    - Bun /w Nuxt v4.2.0, Vue.JS v3.5.22, Vite v7.1.12, Nitro
+    - Other Libraries:
+        @nuxt/ui
+        reka-ui
+        @nuxt/icon
+        @nuxt/fonts
+        shadcn-nuxt
+        @nuxtjs/tailwindcss
+        @clerk/nuxt
+        nuxt-posthog
+        @nuxt/eslint
+        @nuxt/image
+        @nuxtjs/i18n
+        GSAP (v-gsap-nuxt)
+        nuxt-security
+        @nuxtjs/turnstile
+        @prisma/nuxt
+        @pinia/nuxt
+        pinia-plugin-persistedstate
+        @nuxtjs/supabase
+        @nuxt/content
+        @nuxt/devtools
+        @scalar/nuxt
+        @unlok-co/nuxt-stripe
+        @nuxtjs/apollo
+        @nuxtjs/sitemap
+        @nuxtjs/robots
+        @nuxtjs/seo
+        @nuxtjs/color-mode
+
+        
