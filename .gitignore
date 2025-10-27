@@ -29,3 +29,9 @@ lerna-debug.log*
 
 # Bun
 bun.lockb
+
+# gemini-cli settings
+.gemini/
+
+# GitHub App credentials
+gha-creds-*.json
