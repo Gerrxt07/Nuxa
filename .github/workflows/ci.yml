@@ -137,6 +137,9 @@ jobs:
       - name: 📥 Install Dependencies
         run: bun install --frozen-lockfile
       
+      - name: 🔧 Prepare Nuxt
+        run: bun run postinstall
+      
       - name: 📝 Run Type Check
         run: |
           if [ -f "package.json" ] && grep -q "\"typecheck\"" package.json; then
