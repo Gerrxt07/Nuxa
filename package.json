@@ -1,0 +1,53 @@
+{
+  "name": "nuxa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@clerk/nuxt": "latest",
+    "@nuxt/content": "latest",
+    "@nuxt/fonts": "latest",
+    "@nuxt/icon": "latest",
+    "@nuxt/image": "latest",
+    "@nuxt/ui": "latest",
+    "@nuxtjs/apollo": "latest",
+    "@nuxtjs/color-mode": "latest",
+    "@nuxtjs/i18n": "latest",
+    "@nuxtjs/sitemap": "latest",
+    "@nuxtjs/robots": "latest",
+    "@nuxtjs/seo": "latest",
+    "@nuxtjs/supabase": "latest",
+    "@nuxtjs/tailwindcss": "latest",
+    "@nuxtjs/turnstile": "latest",
+    "@pinia/nuxt": "latest",
+    "@prisma/nuxt": "latest",
+    "@scalar/nuxt": "latest",
+    "@unlok-co/nuxt-stripe": "latest",
+    "gsap": "latest",
+    "nuxt": "latest",
+    "nuxt-posthog": "latest",
+    "nuxt-security": "latest",
+    "pinia": "latest",
+    "pinia-plugin-persistedstate": "latest",
+    "reka-ui": "latest",
+    "shadcn-nuxt": "latest",
+    "v-gsap-nuxt": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@nuxt/devtools": "latest",
+    "@nuxt/eslint": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
