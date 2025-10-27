@@ -21,7 +21,7 @@ jobs:
       
       - name: 🧹 Cleanup Old Caches
         id: cleanup
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const caches = await github.rest.actions.getActionsCacheList({
