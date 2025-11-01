@@ -50,7 +50,7 @@ jobs:
         run: bun install --frozen-lockfile
       
       - name: 🔒 Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
@@ -67,12 +67,20 @@ jobs:
               - '**/*.spec.js'
       
       - name: 🏗️ Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
       
       - name: 🔍 Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
+          upload: true
+          output: sarif-results
+      
+      - name: 📊 Upload SARIF Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-results/${{ matrix.language }}.sarif
       
       - name: 📢 Summary
         if: always()
